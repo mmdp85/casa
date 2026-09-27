@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Depto nuevo</title>
+<meta name="theme-color" content="#EFF1ED" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#141A1F" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Depto">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="assets/icon-192.png">
+<link rel="apple-touch-icon" href="assets/icon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div id="hdr"></div>
+<main id="main"></main>
+<script src="assets/data.js"></script>
+<script src="assets/ui.js"></script>
+<script>
+UI.header('inicio');
+const main = document.getElementById('main');
+let first = true;
+
+function render() {
+  const items = CASA.items(), rooms = CASA.rooms(), S = CASA.summary(items), set = CASA.settings();
+  const dias = CASA.daysTo(set.mudanza);
+  const cuando = dias == null ? '' : dias > 1 ? `Faltan ${dias} días para la mudanza, el ${UI.fmtDate(set.mudanza)}.` : dias === 1 ? 'La mudanza es mañana.' : dias === 0 ? 'La mudanza es hoy.' : 'Ya estás en el depto nuevo.';
+  const avance = S.n ? `Hay ${S.done} de ${S.n} cosas resueltas.` : 'Tocá un ambiente para cargar su lista sugerida, o usá Agregar.';
+  const urgentes = items.filter((i) => i.urgencia === 'mudanza' && !CASA.isDone(i));
+
+  const hoy = CASA.todayISO();
+  const proximos = items.filter((i) => i.entrega && i.entrega >= hoy && !CASA.isFinal(i)).sort((a, b) => a.entrega.localeCompare(b.entrega)).slice(0, 6);
+  const flow = CASA.cuotasFlow(1)[0].v;
+
+  main.innerHTML = `
+    <h1>Depto nuevo</h1>
+    <p class="lede">${cuando} ${avance}</p>
+    <div class="plan${first ? ' pre' : ''}" id="plan">${rooms.map((r) => UI.roomTile(r, items)).join('')}</div>
+    <div class="stats">
+      <div class="stat"><div class="k">Presupuesto</div><div class="v">${UI.usd(S.pres)}</div><div class="s">${S.n} ítems cargados</div></div>
+      <div class="stat"><div class="k">Estimado final</div><div class="v">${UI.usd(S.est)}</div><div class="s">${S.ahorro == null ? 'Sin presupuestos para comparar' : UI.pct(S.ahorro, 1) + ' de ahorro vs. presupuesto'}</div></div>
+      <div class="stat"><div class="k">Comprado</div><div class="v">${UI.usd(S.comprado)}</div><div class="s">${S.est ? Math.round((S.comprado / S.est) * 100) + '% del estimado' : '&nbsp;'}</div></div>
+      <div class="stat"><div class="k">Cuotas por pagar</div><div class="v">${UI.usd(S.porPagar)}</div><div class="s">${flow ? UI.usd(flow) + ' este mes' : 'Nada este mes'}</div></div>
+    </div>
+    ${urgentes.length ? `<div class="alert"><span>${urgentes.length === 1 ? 'Hay 1 cosa' : `Hay ${urgentes.length} cosas`} para antes de la mudanza que ${urgentes.length === 1 ? 'todavía no está resuelta' : 'todavía no están resueltas'}.</span><a class="btn sm ghost" href="pendientes.html?u=mudanza">Ver pendientes</a></div>` : ''}
+    <h2>Próximas entregas y turnos</h2>
+    ${proximos.length ? `<ul class="rows">${proximos.map((i) => `<li><span class="d">${UI.fmtDate(i.entrega)}</span><span><button class="lnk" data-id="${i.id}">${UI.esc(i.nombre)}</button> <span class="sm">${UI.esc(CASA.roomName(i.ambiente))}</span></span><span class="tag">${UI.esc(CASA.stageLabel(i))}</span></li>`).join('')}</ul>`
+      : '<p class="muted">No hay entregas ni turnos con fecha. Cuando cargues la fecha de entrega de una compra o el turno de un instalador, aparece acá.</p>'}
+  `;
+  main.querySelectorAll('[data-id]').forEach((b) => b.addEventListener('click', () => UI.openItem(b.dataset.id)));
+  if (first) { first = false; requestAnimationFrame(() => requestAnimationFrame(() => document.getElementById('plan').classList.remove('pre'))); }
+}
+CASA.onChange(render);
+render();
+
+</script>
+</body>
+</html>

@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gastos · Depto nuevo</title>
+<meta name="theme-color" content="#EFF1ED" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#141A1F" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Depto">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="assets/icon-192.png">
+<link rel="apple-touch-icon" href="assets/icon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div id="hdr"></div>
+<main id="main"></main>
+<script src="assets/data.js"></script>
+<script src="assets/ui.js"></script>
+<script>
+UI.header('gastos');
+const main = document.getElementById('main');
+
+function groupRows(items, keyFn, labelFn) {
+  const m = new Map();
+  items.forEach((i) => { const k = keyFn(i); if (!m.has(k)) m.set(k, []); m.get(k).push(i); });
+  return [...m.entries()].map(([k, list]) => Object.assign({ key: k, label: labelFn(k) }, CASA.summary(list)));
+}
+function table(rows, first) {
+  rows = rows.filter((r) => r.pres || r.est);
+  if (!rows.length) return '<p class="muted">Cargá presupuestos o precios para ver este cuadro.</p>';
+  const max = Math.max(1, ...rows.map((r) => Math.max(r.pres, r.est)));
+  const T = CASA.summary(CASA.items());
+  return `<div class="scroll"><table class="t">
+    <thead><tr><th>${first}</th><th class="n">Presupuesto</th><th class="n">Estimado</th><th class="n">Comprado</th><th class="n">Ahorro</th><th style="width:28%">Estimado vs. presupuesto</th></tr></thead>
+    <tbody>${rows.map((r) => `<tr>
+      <td>${r.href ? `<a href="${r.href}">${UI.esc(r.label)}</a>` : UI.esc(r.label)}</td>
+      <td class="n">${UI.usd(r.pres)}</td><td class="n">${UI.usd(r.est)}</td><td class="n">${UI.usd(r.comprado)}</td>
+      <td class="n">${UI.pct(r.ahorro, 1)}</td>
+      <td><div class="bar"><i style="width:${(r.est / max) * 100}%"></i>${r.pres ? `<b style="left:${(r.pres / max) * 100}%"></b>` : ''}</div></td></tr>`).join('')}</tbody>
+    <tfoot><tr><td>Total</td><td class="n">${UI.usd(T.pres)}</td><td class="n">${UI.usd(T.est)}</td><td class="n">${UI.usd(T.comprado)}</td><td class="n">${UI.pct(T.ahorro, 1)}</td><td></td></tr></tfoot>
+  </table></div>`;
+}
+
+function render() {
+  const items = CASA.items(), S = CASA.summary(items);
+  const flow = CASA.cuotasFlow(12);
+  const maxF = Math.max(1, ...flow.map((f) => f.v));
+  const totalF = flow.reduce((a, f) => a + f.v, 0);
+
+  const byRoom = CASA.rooms().map((r) => Object.assign({ label: r.nombre, href: `ambiente.html?id=${encodeURIComponent(r.id)}` }, CASA.summary(items.filter((i) => i.ambiente === r.id)))).filter((r) => r.n);
+  const byCat = groupRows(items, (i) => i.categoria || 'otros', CASA.catLabel).sort((a, b) => b.est - a.est);
+  const top = items.filter((i) => CASA.estimado(i) > 0).sort((a, b) => CASA.estimado(b) - CASA.estimado(a)).slice(0, 10);
+
+  main.innerHTML = `
+    <h1>Gastos</h1>
+    <p class="lede">Todo en dólares. Lo que pagás en pesos se convierte al MEP del día en que lo cargaste.</p>
+    <div class="stats">
+      <div class="stat"><div class="k">Presupuesto</div><div class="v">${UI.usd(S.pres)}</div><div class="s">${S.n} ítems</div></div>
+      <div class="stat"><div class="k">Estimado final</div><div class="v">${UI.usd(S.est)}</div><div class="s">${S.ahorro == null ? '&nbsp;' : UI.pct(S.ahorro, 1) + ' de ahorro vs. presupuesto'}</div></div>
+      <div class="stat"><div class="k">Comprado</div><div class="v">${UI.usd(S.comprado)}</div><div class="s">Pagado ${UI.usd(S.pagado)}</div></div>
+      <div class="stat"><div class="k">Cuotas por pagar</div><div class="v">${UI.usd(S.porPagar)}</div><div class="s">${totalF ? 'en los próximos 12 meses' : 'Sin cuotas'}</div></div>
+    </div>
+
+    <section class="exhibit">
+      <h3>Por ambiente</h3>
+      <p class="sub">Estimado usa el precio real si ya lo cargaste, si no el presupuesto. La marca negra es el presupuesto.</p>
+      ${table(byRoom, 'Ambiente')}
+      <p class="foot">Ahorro = (presupuesto − estimado) / presupuesto, solo sobre los ítems con presupuesto cargado. Positivo: por debajo del presupuesto.</p>
+    </section>
+
+    <section class="exhibit">
+      <h3>Por categoría</h3>
+      <p class="sub">Ordenado de mayor a menor gasto estimado.</p>
+      ${table(byCat, 'Categoría')}
+    </section>
+
+    <section class="exhibit">
+      <h3>Cuotas mes a mes</h3>
+      <p class="sub">Lo que sale de tus tarjetas en los próximos 12 meses por compras ya hechas en cuotas.</p>
+      ${totalF ? `<div class="scroll"><div class="cols">${flow.map((f) => `<div class="c"><em>${f.v ? UI.int(Math.round(f.v)) : ''}</em><i style="height:${(f.v / maxF) * 100}%"></i><span>${UI.monthLabel(f.ym)}</span></div>`).join('')}</div></div>`
+        : '<p class="muted">Cuando cargues una compra en cuotas (con etapa Comprado o posterior), aparece acá su calendario de pagos.</p>'}
+      <p class="foot">Montos en US$. Las cuotas en pesos se convierten al TC de la compra, así que en dólares reales van a pesar menos a medida que pasen los meses.</p>
+    </section>
+
+    <section class="exhibit">
+      <h3>Las 10 compras más grandes</h3>
+      <p class="sub">Donde se va la mayor parte de la plata.</p>
+      ${top.length ? `<div class="scroll"><table class="t"><thead><tr><th>Ítem</th><th>Ambiente</th><th>Etapa</th><th class="n">Estimado</th><th class="n">% del total</th></tr></thead><tbody>
+        ${top.map((i) => `<tr><td><a href="#" data-id="${i.id}">${UI.esc(i.nombre)}</a></td><td>${UI.esc(CASA.roomName(i.ambiente))}</td><td><span class="tag">${UI.esc(CASA.stageLabel(i))}</span></td><td class="n">${UI.usd(CASA.estimado(i))}</td><td class="n">${S.est ? ((CASA.estimado(i) / S.est) * 100).toFixed(1).replace('.', ',') + '%' : '—'}</td></tr>`).join('')}
+      </tbody></table></div>` : '<p class="muted">Cargá presupuestos o precios para ver el ranking.</p>'}
+    </section>
+  `;
+  main.querySelectorAll('[data-id]').forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); UI.openItem(a.dataset.id); }));
+}
+CASA.onChange(render);
+render();
+
+</script>
+</body>
+</html>

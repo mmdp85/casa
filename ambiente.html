@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ambiente · Depto nuevo</title>
+<meta name="theme-color" content="#EFF1ED" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#141A1F" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Depto">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="assets/icon-192.png">
+<link rel="apple-touch-icon" href="assets/icon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div id="hdr"></div>
+<main id="main"></main>
+<script src="assets/data.js"></script>
+<script src="assets/ui.js"></script>
+<script>
+UI.header('ambientes');
+const main = document.getElementById('main');
+const id = new URLSearchParams(location.search).get('id');
+UI.defaults = { ambiente: id };
+const ORIENT = [['', 'Sin definir'], ['N', 'Norte'], ['NE', 'Noreste'], ['E', 'Este'], ['SE', 'Sudeste'], ['S', 'Sur'], ['SO', 'Sudoeste'], ['O', 'Oeste'], ['NO', 'Noroeste']];
+
+function shell() {
+  const r = CASA.room(id);
+  if (!r) {
+    main.innerHTML = '<a class="back" href="ambientes.html">‹ Ambientes</a><h1>No existe este ambiente</h1><p class="lede">Puede que lo hayas borrado. Volvé a la lista de ambientes.</p>';
+    return false;
+  }
+  main.innerHTML = `
+    <a class="back" href="ambientes.html">‹ Ambientes</a>
+    <h1 id="title"></h1>
+    <p class="lede" id="lede"></p>
+    <div class="actions" id="acts"></div>
+    <div class="split" style="margin-top:28px">
+      <div id="list"></div>
+      <aside class="sheet" id="sheet"></aside>
+    </div>`;
+  renderSheet(r);
+  return true;
+}
+
+function renderSheet(r) {
+  const el = document.getElementById('sheet');
+  el.innerHTML = `
+    <h3>Ficha del ambiente</h3>
+    <label class="f" style="margin-top:12px">Nombre<input name="nombre"></label>
+    <div class="grid2">
+      <label class="f">Superficie (m²)<input type="number" inputmode="decimal" step="any" min="0" name="m2"></label>
+      <label class="f">Altura (m)<input type="number" inputmode="decimal" step="any" min="0" name="altura"></label>
+    </div>
+    <label class="f" style="margin-top:12px">Orientación de la ventana<select name="orientacion">${ORIENT.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></label>
+    <label class="inline-check"><input type="checkbox" name="techo"> Techo al sol o último piso</label>
+    <label class="f" style="margin-top:12px">Medidas y notas<textarea name="notas" rows="4" placeholder="Ventana 1,80 × 1,50. Pared libre 3,20. Placard 1,60 de frente."></textarea></label>
+    <div class="frig" id="frig"></div>
+    <div style="margin-top:18px"><button class="btn danger sm" id="del-room" type="button">Eliminar ambiente</button></div>`;
+  const q = (n) => el.querySelector(`[name="${n}"]`);
+  q('nombre').value = r.nombre; q('m2').value = r.m2 ?? ''; q('altura').value = r.altura ?? 2.6;
+  q('orientacion').value = r.orientacion || ''; q('techo').checked = !!r.techo; q('notas').value = r.notas || '';
+  let t;
+  const save = () => {
+    clearTimeout(t);
+    t = setTimeout(() => {
+      CASA.upsertRoom({ id, nombre: q('nombre').value.trim() || r.nombre, m2: CASA.num(q('m2').value), altura: CASA.num(q('altura').value) || 2.6, orientacion: q('orientacion').value, techo: q('techo').checked, notas: q('notas').value });
+    }, 500);
+    renderFrig({ m2: q('m2').value, altura: q('altura').value, orientacion: q('orientacion').value, techo: q('techo').checked });
+  };
+  el.addEventListener('input', save);
+  el.addEventListener('change', save);
+  el.querySelector('#del-room').addEventListener('click', () => {
+    const n = CASA.items().filter((i) => i.ambiente === id).length;
+    if (id === 'general') { alert('General no se puede eliminar: es donde van los ítems de ambientes borrados.'); return; }
+    if (confirm(n ? `¿Eliminar ${r.nombre}? Sus ${n} ítems pasan a General.` : `¿Eliminar ${r.nombre}?`)) { CASA.deleteRoom(id); location.href = 'ambientes.html'; }
+  });
+  renderFrig(r);
+}
+
+function renderFrig(r) {
+  const el = document.getElementById('frig');
+  const f = CASA.frigorias(r);
+  const hasAC = CASA.items().some((i) => i.ambiente === id && i.categoria === 'climatizacion');
+  el.innerHTML = f ? `
+    <div class="hint" style="margin:0">Aire acondicionado sugerido</div>
+    <div class="big">${f.split ? `Split de ${UI.int(f.split)} frigorías` : `Más de 9.000 frigorías: consultá dos equipos`}</div>
+    <p class="hint">Cálculo: ${UI.int(f.calc)} frigorías (m² × altura × 50, +15% con sol de norte u oeste, +15% con techo al sol). Confirmalo con el instalador.</p>
+    ${f.split && !hasAC ? `<button class="btn ghost sm" id="add-ac" type="button" style="margin-top:8px">Agregar aire de ${UI.int(f.split)} frigorías</button>` : ''}`
+    : '<p class="hint" style="margin:0">Cargá los m² y te digo de cuántas frigorías tiene que ser el aire.</p>';
+  el.querySelector('#add-ac')?.addEventListener('click', () => {
+    CASA.upsertItem({ tipo: 'compra', nombre: `Aire acondicionado split ${UI.int(f.split)} frigorías`, ambiente: id, categoria: 'climatizacion', stage: 'idea', urgencia: 'mudanza', moneda: 'USD', cuotas: 1 });
+    UI.toast('Aire agregado a la lista');
+    el.querySelector('#add-ac')?.remove();
+  });
+}
+
+function render() {
+  const r = CASA.room(id); if (!r) return;
+  const its = CASA.items().filter((i) => i.ambiente === id);
+  const S = CASA.summary(its);
+  const sug = CASA.pendingTemplate(id);
+  document.title = `${r.nombre} · Depto nuevo`;
+  document.getElementById('title').textContent = r.nombre;
+  document.getElementById('lede').textContent = S.n ? `${S.done} de ${S.n} resueltos. Estimado ${UI.usd(S.est)}, comprado ${UI.usd(S.comprado)}.` : 'Todavía no cargaste nada en este ambiente.';
+  const acts = document.getElementById('acts');
+  acts.innerHTML = `<button class="btn" id="add-here" type="button">Agregar a ${UI.esc(r.nombre)}</button>${sug ? `<button class="btn ghost" id="tpl" type="button">Cargar lista sugerida (${sug})</button>` : ''}`;
+  acts.querySelector('#add-here').addEventListener('click', () => UI.openItem(null, { ambiente: id }));
+  acts.querySelector('#tpl')?.addEventListener('click', () => { const n = CASA.applyTemplate(id); UI.toast(`${n} ítems agregados`); });
+
+  const list = document.getElementById('list');
+  if (!its.length) {
+    list.innerHTML = `<div class="empty"><p>${sug ? 'Arrancá con la lista sugerida y borrá lo que no va, o agregá ítems uno por uno.' : 'Agregá lo que necesitás para este ambiente.'}</p></div>`;
+    return;
+  }
+  const cats = CASA.CATEGORIAS.filter((c) => its.some((i) => (i.categoria || 'otros') === c.id));
+  list.innerHTML = cats.map((c) => {
+    const g = its.filter((i) => (i.categoria || 'otros') === c.id).sort((a, b) => Number(CASA.isDone(a)) - Number(CASA.isDone(b)) || a.nombre.localeCompare(b.nombre));
+    return `<div class="group"><h3>${c.label}</h3>${g.map((i) => {
+      const done = CASA.isDone(i), est = CASA.estimado(i);
+      return `<div class="check${done ? ' done' : ''}">
+        <input type="checkbox" data-t="${i.id}" ${done ? 'checked' : ''} aria-label="Marcar ${UI.esc(i.nombre)} como resuelto">
+        <button class="nm" data-id="${i.id}">${UI.esc(i.nombre)}</button>
+        ${i.urgencia === 'mudanza' && !done ? '<span class="tag ocre">Mudanza</span>' : ''}
+        <span class="tag">${UI.esc(CASA.stageLabel(i))}</span>
+        <span class="amt">${est ? UI.usd(est) : ''}</span></div>`;
+    }).join('')}</div>`;
+  }).join('');
+  list.querySelectorAll('[data-id]').forEach((b) => b.addEventListener('click', () => UI.openItem(b.dataset.id)));
+  list.querySelectorAll('[data-t]').forEach((cb) => cb.addEventListener('change', () => {
+    const i = CASA.item(cb.dataset.t);
+    const stage = i.tipo === 'tarea' ? (cb.checked ? 'hecho' : 'pendiente') : (cb.checked ? 'comprado' : (i.precio != null ? 'decidido' : 'idea'));
+    CASA.upsertItem({ id: i.id, stage });
+  }));
+}
+
+if (shell()) { CASA.onChange(render); render(); }
+
+</script>
+</body>
+</html>

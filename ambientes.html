@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ambientes · Depto nuevo</title>
+<meta name="theme-color" content="#EFF1ED" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#141A1F" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Depto">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="assets/icon-192.png">
+<link rel="apple-touch-icon" href="assets/icon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div id="hdr"></div>
+<main id="main"></main>
+<script src="assets/data.js"></script>
+<script src="assets/ui.js"></script>
+<script>
+UI.header('ambientes');
+const main = document.getElementById('main');
+
+function render() {
+  const items = CASA.items(), rooms = CASA.rooms();
+  main.innerHTML = `
+    <h1>Ambientes</h1>
+    <p class="lede">El rayado muestra cuánto de cada ambiente ya está resuelto. Entrá a uno para ver su lista, cargar la sugerida y anotar medidas.</p>
+    <div class="plan">${rooms.map((r) => UI.roomTile(r, items)).join('')}</div>
+    <section class="exhibit">
+      <h3>Resumen por ambiente</h3>
+      <p class="sub">Pendientes para la mudanza cuenta lo marcado como "Antes de la mudanza" que no está resuelto.</p>
+      <div class="scroll"><table class="t">
+        <thead><tr><th>Ambiente</th><th class="n">Ítems</th><th style="width:22%">Resuelto</th><th class="n">Estimado</th><th class="n">Para la mudanza</th><th class="n">Orden</th></tr></thead>
+        <tbody>${rooms.map((r, k) => {
+          const its = items.filter((i) => i.ambiente === r.id), S = CASA.summary(its);
+          const p = S.n ? S.done / S.n : 0;
+          const urg = its.filter((i) => i.urgencia === 'mudanza' && !CASA.isDone(i)).length;
+          return `<tr><td><a href="ambiente.html?id=${encodeURIComponent(r.id)}">${UI.esc(r.nombre)}</a></td><td class="n">${S.n}</td>
+            <td><div class="bar"><i style="width:${p * 100}%"></i></div></td><td class="n">${UI.usd(S.est)}</td>
+            <td class="n">${urg ? `<span class="tag ocre">${urg}</span>` : '<span class="muted">0</span>'}</td>
+            <td class="n"><button class="mv" data-up="${r.id}" aria-label="Subir ${UI.esc(r.nombre)}" ${k === 0 ? 'disabled' : ''}>↑</button> <button class="mv" data-down="${r.id}" aria-label="Bajar ${UI.esc(r.nombre)}" ${k === rooms.length - 1 ? 'disabled' : ''}>↓</button></td></tr>`;
+        }).join('')}</tbody></table></div>
+    </section>
+    <h2>Agregar ambiente</h2>
+    <form id="new-room" class="actions" style="max-width:520px">
+      <input name="nombre" placeholder="Ej. Lavadero, Toilette, Comedor" aria-label="Nombre del ambiente" style="flex:1">
+      <button class="btn" type="submit">Agregar ambiente</button>
+    </form>
+    <p class="hint">Si el nombre coincide con uno conocido (lavadero, toilette, comedor, balcón…) trae su lista sugerida.</p>
+  `;
+  main.querySelectorAll('[data-up]').forEach((b) => b.addEventListener('click', () => CASA.moveRoom(b.dataset.up, -1)));
+  main.querySelectorAll('[data-down]').forEach((b) => b.addEventListener('click', () => CASA.moveRoom(b.dataset.down, 1)));
+  main.querySelector('#new-room').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const nombre = e.target.nombre.value.trim();
+    if (!nombre) { e.target.nombre.focus(); return; }
+    const r = CASA.upsertRoom({ nombre });
+    location.href = `ambiente.html?id=${encodeURIComponent(r.id)}`;
+  });
+}
+CASA.onChange(render);
+render();
+
+</script>
+</body>
+</html>

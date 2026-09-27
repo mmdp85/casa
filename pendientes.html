@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pendientes · Depto nuevo</title>
+<meta name="theme-color" content="#EFF1ED" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#141A1F" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Depto">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="assets/icon-192.png">
+<link rel="apple-touch-icon" href="assets/icon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div id="hdr"></div>
+<main id="main"></main>
+<script src="assets/data.js"></script>
+<script src="assets/ui.js"></script>
+<script>
+UI.header('pendientes');
+const main = document.getElementById('main');
+const qs = new URLSearchParams(location.search);
+const F = { urg: qs.get('u') || 'all', tipo: 'all', amb: 'all', resp: 'all' };
+const URG_ORDER = { mudanza: 0, mes1: 1, espera: 2 };
+
+function chips(key, list) {
+  return `<div class="chips" role="group">${[{ id: 'all', label: 'Todo' }].concat(list).map((o) => `<button type="button" class="chip" data-f="${key}" data-v="${o.id}" aria-pressed="${F[key] === o.id}">${UI.esc(o.label)}</button>`).join('')}</div>`;
+}
+
+function card(i) {
+  const st = CASA.stagesFor(i.tipo), idx = CASA.stageIndex(i);
+  const est = CASA.estimado(i);
+  const sub = [CASA.roomName(i.ambiente), i.responsable, i.entrega ? (i.tipo === 'tarea' ? 'Turno ' : 'Entrega ') + UI.fmtDate(i.entrega) : ''].filter(Boolean).map(UI.esc).join(', ');
+  return `<div class="card u-${i.urgencia}">
+    <button class="t1" data-id="${i.id}">${UI.esc(i.nombre)}</button>
+    <div class="t2">${sub}</div>
+    <div class="row">
+      <div class="tags"><span class="tag">${UI.esc(CASA.stageLabel(i))}</span>${i.urgencia === 'mudanza' ? '<span class="tag ocre">Mudanza</span>' : ''}${i.tipo === 'tarea' ? '<span class="tag plain">Tarea</span>' : ''}${est ? `<span class="tag plain">${UI.usd(est)}</span>` : ''}</div>
+      <div class="actions"><button class="mv" data-mv="-1" data-id="${i.id}" aria-label="Etapa anterior" ${idx <= 0 ? 'disabled' : ''}>‹</button><button class="mv" data-mv="1" data-id="${i.id}" aria-label="Etapa siguiente" ${idx >= st.length - 1 ? 'disabled' : ''}>›</button></div>
+    </div></div>`;
+}
+
+function render() {
+  const all = CASA.items();
+  const list = all.filter((i) => (F.urg === 'all' || i.urgencia === F.urg) && (F.tipo === 'all' || i.tipo === F.tipo) && (F.amb === 'all' || i.ambiente === F.amb) && (F.resp === 'all' || (i.responsable || '') === F.resp));
+  const urg = all.filter((i) => i.urgencia === 'mudanza' && !CASA.isDone(i)).length;
+  const resp = [...new Set(all.map((i) => i.responsable || ''))];
+  const sorted = list.slice().sort((a, b) => (URG_ORDER[a.urgencia] ?? 3) - (URG_ORDER[b.urgencia] ?? 3) || (a.entrega || '9').localeCompare(b.entrega || '9') || a.nombre.localeCompare(b.nombre));
+
+  main.innerHTML = `
+    <h1>Pendientes</h1>
+    <p class="lede">Movés cada cosa de etapa con las flechas. El borde ocre marca lo que tiene que estar antes de la mudanza.</p>
+    ${urg ? `<div class="alert" style="margin:0 0 20px"><span>${urg} ${urg === 1 ? 'cosa' : 'cosas'} para antes de la mudanza sin resolver.</span>${F.urg !== 'mudanza' ? '<button class="btn sm ghost" data-f="urg" data-v="mudanza">Ver solo esas</button>' : ''}</div>` : ''}
+    <div class="filters">
+      <div><div class="hint" style="margin:0 0 6px">Cuándo</div>${chips('urg', CASA.URGENCIAS)}</div>
+      <div><div class="hint" style="margin:0 0 6px">Tipo</div>${chips('tipo', [{ id: 'compra', label: 'Compras' }, { id: 'tarea', label: 'Tareas' }])}</div>
+      <label class="f">Ambiente<select id="f-amb"><option value="all">Todos</option>${CASA.rooms().map((r) => `<option value="${r.id}"${F.amb === r.id ? ' selected' : ''}>${UI.esc(r.nombre)}</option>`).join('')}</select></label>
+      <label class="f">Quién<select id="f-resp"><option value="all">Todos</option>${resp.map((r) => `<option value="${UI.esc(r)}"${F.resp === r ? ' selected' : ''}>${UI.esc(r || 'Sin asignar')}</option>`).join('')}</select></label>
+    </div>
+    ${all.length ? `<div class="board">${CASA.COLUMNS.map((c) => { const cs = sorted.filter((i) => CASA.column(i) === c.id); return `<section class="col"><div class="col-h"><h3>${c.label}</h3><span>${cs.length}</span></div>${cs.map(card).join('') || '<p class="hint">Nada acá.</p>'}</section>`; }).join('')}</div>`
+      : '<div class="empty"><p>No hay nada cargado todavía.</p><a class="btn" href="ambientes.html">Ir a ambientes</a></div>'}
+  `;
+  main.querySelectorAll('[data-f]').forEach((b) => b.addEventListener('click', () => { F[b.dataset.f] = b.dataset.v; render(); }));
+  main.querySelector('#f-amb')?.addEventListener('change', (e) => { F.amb = e.target.value; render(); });
+  main.querySelector('#f-resp')?.addEventListener('change', (e) => { F.resp = e.target.value; render(); });
+  main.querySelectorAll('.t1').forEach((b) => b.addEventListener('click', () => UI.openItem(b.dataset.id)));
+  main.querySelectorAll('[data-mv]').forEach((b) => b.addEventListener('click', () => CASA.moveStage(b.dataset.id, Number(b.dataset.mv))));
+}
+CASA.onChange(render);
+render();
+
+</script>
+</body>
+</html>

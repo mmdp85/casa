@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ajustes · Depto nuevo</title>
+<meta name="theme-color" content="#EFF1ED" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#141A1F" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Depto">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="assets/icon-192.png">
+<link rel="apple-touch-icon" href="assets/icon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div id="hdr"></div>
+<main id="main"></main>
+<script src="assets/data.js"></script>
+<script src="assets/ui.js"></script>
+<script>
+UI.header('ajustes');
+const main = document.getElementById('main');
+
+function render() {
+  const s = CASA.settings(), c = CASA.getCfg();
+  main.innerHTML = `
+    <h1>Ajustes</h1>
+    <p class="lede">La fecha de mudanza, quiénes se reparten las tareas y dónde se guardan los datos.</p>
+
+    <section class="exhibit">
+      <h3>La mudanza</h3>
+      <div class="grid2">
+        <label class="f">Fecha de mudanza<input type="date" id="mudanza" value="${UI.esc(s.mudanza || '')}"></label>
+        <span></span>
+        <label class="f">Persona 1<input id="r1" value="${UI.esc((s.responsables || [])[0] || '')}"></label>
+        <label class="f">Persona 2<input id="r2" value="${UI.esc((s.responsables || [])[1] || '')}"></label>
+      </div>
+      <div class="actions" style="margin-top:14px"><button class="btn" id="save-s" type="button">Guardar</button></div>
+    </section>
+
+    <section class="exhibit">
+      <h3>Sincronizar con GitHub</h3>
+      <p class="sub">Los datos se guardan como <code>casa.json</code> en un repo privado tuyo. Así tenés lo mismo en el celular y en la compu, y cada cambio queda en el historial del repo.</p>
+      <div class="grid2">
+        <label class="f">Usuario de GitHub<input id="owner" value="${UI.esc(c.owner)}" placeholder="mmdp85" autocapitalize="off"></label>
+        <label class="f">Repo de datos (privado)<input id="repo" value="${UI.esc(c.repo)}" placeholder="casa-datos" autocapitalize="off"></label>
+        <label class="f">Rama<input id="branch" value="${UI.esc(c.branch)}" autocapitalize="off"></label>
+        <label class="f">Archivo<input id="path" value="${UI.esc(c.path)}" autocapitalize="off"></label>
+      </div>
+      <label class="f" style="margin-top:12px">Token de acceso<input id="token" type="password" value="${UI.esc(c.token)}" placeholder="github_pat_…" autocomplete="off"></label>
+      <p class="hint">Token fine-grained con acceso solo a ese repo y permiso <strong>Contents: Read and write</strong>. Queda guardado en este navegador; en cada dispositivo lo cargás una vez.</p>
+      <div class="actions" style="margin-top:14px">
+        <button class="btn" id="save-gh" type="button">Guardar y sincronizar</button>
+        <button class="btn ghost" id="test-gh" type="button">Probar conexión</button>
+        ${c.token ? '<button class="btn ghost" id="off-gh" type="button">Desconectar este dispositivo</button>' : ''}
+      </div>
+      <p class="hint" id="gh-msg" aria-live="polite"></p>
+    </section>
+
+    <section class="exhibit">
+      <h3>Copia de seguridad</h3>
+      <p class="sub">Exportá todo a un archivo, o importá uno exportado antes (se combina con lo que ya tenés).</p>
+      <div class="actions">
+        <button class="btn ghost" id="exp" type="button">Exportar JSON</button>
+        <label class="btn ghost" for="imp">Importar JSON</label><input type="file" id="imp" accept="application/json,.json" hidden>
+        <button class="btn danger" id="wipe" type="button">Borrar todos los ítems</button>
+      </div>
+    </section>`;
+
+  const $ = (x) => main.querySelector(x);
+  const msg = (t, bad) => { const m = $('#gh-msg'); m.textContent = t; m.className = 'hint' + (bad ? ' err' : ''); };
+  const readCfg = () => ({ owner: $('#owner').value.trim(), repo: $('#repo').value.trim(), branch: $('#branch').value.trim() || 'main', path: $('#path').value.trim() || 'casa.json', token: $('#token').value.trim() });
+
+  $('#save-s').addEventListener('click', () => {
+    CASA.setSettings({ mudanza: $('#mudanza').value, responsables: [$('#r1').value.trim(), $('#r2').value.trim()].filter(Boolean) });
+    UI.toast('Guardado');
+  });
+  $('#test-gh').addEventListener('click', async () => {
+    const prev = CASA.getCfg();
+    CASA.setCfg(readCfg());
+    msg('Probando…');
+    try { await CASA.testRemote(); msg('Conexión correcta.'); } catch (e) { msg(e.message, true); CASA.setCfg(prev); }
+  });
+  $('#save-gh').addEventListener('click', async () => {
+    const cfg = readCfg();
+    if (!cfg.owner || !cfg.repo || !cfg.token) { msg('Completá usuario, repo y token.', true); return; }
+    CASA.setCfg(cfg);
+    msg('Sincronizando…');
+    await CASA.sync();
+    const st = CASA.status();
+    if (st.state === 'ok') { msg('Listo. Los datos están en GitHub.'); } else { msg(st.msg || 'No se pudo sincronizar.', true); }
+  });
+  $('#off-gh')?.addEventListener('click', () => { CASA.setCfg({ token: '' }); UI.toast('Este dispositivo quedó sin sincronizar'); render(); });
+  $('#exp').addEventListener('click', () => {
+    const blob = new Blob([CASA.exportJSON()], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = `casa-${CASA.todayISO()}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+  $('#imp').addEventListener('change', async (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    try { CASA.importJSON(await file.text()); UI.toast('Importado'); } catch (err) { alert(err.message); }
+  });
+  $('#wipe').addEventListener('click', () => { if (confirm('¿Borrar todos los ítems? Los ambientes y ajustes se mantienen.')) { CASA.wipeItems(); UI.toast('Ítems borrados'); } });
+}
+render();
+
+</script>
+</body>
+</html>
